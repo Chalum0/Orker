@@ -4,9 +4,12 @@ from importlib import import_module
 from dataclasses import dataclass
 from threading import Thread
 from pathlib import Path
+import subprocess
 import datetime
+import argparse
 import json
 import time
+import sys
 
 
 class Orchestrator:
@@ -22,7 +25,7 @@ class Orchestrator:
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
-            orc.stop_server()
+            self.stop_server()
     def stop_server(self):
         if self._server.server is None:
             return
@@ -201,5 +204,60 @@ class EndpointBlueprint:
 
         return endpoint
 
-orc = Orchestrator()
-orc.load_json("./config.json")
+class OrchestratorUtils:
+
+    @staticmethod
+    def install_dependencies():
+        try:
+            OrchestratorUtils._install_folder("./endpoints")
+            OrchestratorUtils._install_folder("./services")
+            OrchestratorUtils._install_folder("./routines")
+        except Exception as e:
+            print(f"Error installing dependencies: {e}")
+
+    @staticmethod
+    def _install_folder(folder: str) -> bool:
+        for file in Path(folder).iterdir():
+            if file.is_file():
+                with file.open("r", encoding="utf-8") as f:
+                    first_line = f.readline().strip()
+                    if first_line.startswith("#") and "pip install" in first_line:
+                        command = first_line.replace("#", "").strip()
+                        if command.startswith("pip "):
+                            command = f'"{sys.executable}" -m {command}'
+                            subprocess.run(command, shell=True, check=True)
+        return True
+
+# orc = Orchestrator()
+# orc.load_json("./config.json")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    group = parser.add_mutually_exclusive_group(required=False)
+    group.add_argument(
+        "-i",
+        "--install",
+        action="store_true",
+        help="Installs dependencies for all the endpoints, services and routines",
+    )
+    group.add_argument(
+        "-r",
+        "--run",
+        metavar="LINK",
+        type=str,
+        help="Path of the json blueprint",
+    )
+
+    args = parser.parse_args()
+    if args.install:
+        OrchestratorUtils.install_dependencies()
+        exit()
+
+    elif args.run:
+        path = args.run
+        orc = Orchestrator()
+        orc.load_json(path)
+        exit()
+
+    else:
+        print(f'Invalid args. Run "python orchestrator.py -h" for help.')
