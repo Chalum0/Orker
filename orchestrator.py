@@ -158,7 +158,7 @@ class RoutineExecutor:
 
     def run_routine(self):
         print(f"{datetime.datetime.now()} - Starting Routine")
-        return self.routine.run()
+        return self.routine.run(self.ctx)
 
 
 class EndpointBlueprint:
@@ -167,11 +167,11 @@ class EndpointBlueprint:
         self.endpointType = endpoint_type
         self.route = route
         self.method = method
-        self.handler = self.make_message_handler(executor_class)
-        self.endpoint = self.make_message_endpoint(self.handler)
+        self.handler = self.make_handler(executor_class)
+        self.endpoint = self.make_endpoint(self.handler)
 
     @staticmethod
-    def make_message_handler(executor_class):
+    def make_handler(executor_class):
         def handler(payload):
             # Create a new instance of the executor class that
             # already has a clean context plus the global context
@@ -190,7 +190,7 @@ class EndpointBlueprint:
         return handler
 
     @staticmethod
-    def make_message_endpoint(callback):
+    def make_endpoint(callback):
         def endpoint(payload):
             if callback:
                 response = callback(payload)
