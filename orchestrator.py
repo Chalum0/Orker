@@ -4,9 +4,12 @@ from importlib import import_module
 from dataclasses import dataclass
 from threading import Thread
 from pathlib import Path
+import subprocess
 import datetime
+import argparse
 import json
 import time
+import sys
 
 
 class Orchestrator:
@@ -22,7 +25,7 @@ class Orchestrator:
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
-            orc.stop_server()
+            self.stop_server()
     def stop_server(self):
         if self._server.server is None:
             return
@@ -32,56 +35,60 @@ class Orchestrator:
         for endpoint in endpoints:
             self._server.make_endpoint(endpoint.route, endpoint.method, endpoint.endpoint)
 
-    def load_json(self, j):
-        if type(j) != dict:
-            if type(j) == str:
-                json_path = Path(j)
-                if not json_path.exists():
-                    raise FileNotFoundError(f"File '{json_path}' not found")
-                j = json.loads(json_path.read_text(encoding="utf-8"))
-            else:
-                raise ValueError("Invalid JSON provided")
-
-        services = {}
-        for s in j["services"]:
-            name = s["name"]
-            module = import_module(f"services.{name}")
-            service = getattr(module, name, None)
-            if service is None:
-                raise RuntimeError(f"Routine '{name}' not found")
-            services[name] = service
-
-        for k, v in j["variables"].items():
-            setattr(self.ctx, f"v_{k}", v)
-
-
-        # self.ctx.services = services
-        for k, v in services.items():
-            setattr(self.ctx, f"service_{k}", v)
-
-        print(self.ctx)
-
-        endpoints = []
-        for e in j["endpoints"]:
-            name = e["name"]
-            routine_name = e["routine"]["name"]
-            module = import_module(f"endpoints.{name}")
-            endpoint = getattr(module, name, None)
-            if endpoint is None:
-                raise RuntimeError(f"Endpoint '{name}' not found")
-            routine_module = import_module(f"routines.{routine_name}")
-            routine = getattr(routine_module, routine_name, None)
-            if routine is None:
-                raise RuntimeError(f"Routine '{routine_name}' not found")
-            persistent_ctx = Context()
-            make_routine_executor = lambda: RoutineExecutor(orchestrator=self, routine=routine, persistent_ctx=persistent_ctx)
-            blueprint = lambda **kwargs: EndpointBlueprint(executor_class=make_routine_executor, **kwargs)
-            endpoint = endpoint(blueprint).endpoint
-            endpoints.append(endpoint)
-        self.create_endpoints(endpoints)
-
+    def load_json(self, src):
+        data = self._read_json(src)
+        self._load_services(data.get("services", []))
+        self._load_variables(data.get("variables", {}))
+        self._load_endpoints(data.get("endpoints", []))
         self.start_server()
 
+    @staticmethod
+    def _read_json(src):
+        src = Path(src)
+        if not src.exists():
+            raise FileNotFoundError(src)
+
+        return json.loads(src.read_text(encoding="utf-8"))
+
+
+    def _load_services(self, services):
+        for spec in services:
+            name = spec["name"]
+            svc_cls = self._import_attr(f"services.{name}", name, kind="service")
+            setattr(self.ctx, f"service_{name}", svc_cls)
+
+    def _load_variables(self, variables) -> None:
+        for key, value in variables.items():
+            setattr(self.ctx, f"v_{key}", value)
+
+
+    def _load_endpoints(self, endpoints) -> None:
+        blueprints = []
+        for spec in endpoints:
+            name = spec["name"]
+            routine_name = spec["routine"]["name"]
+
+            endpoint_cls = self._import_attr(f"endpoints.{name}", name, kind="endpoint")
+            routine_cls = self._import_attr(f"routines.{routine_name}", routine_name, kind="routine")
+
+            persistent_ctx = Context()
+            make_routine_executor = lambda: RoutineExecutor(orchestrator=self, routine=routine_cls, persistent_ctx=persistent_ctx)
+            blueprint = lambda **kwargs: EndpointBlueprint(executor_class=make_routine_executor, **kwargs)
+            # make_executor = lambda: RoutineExecutor(self, routine_cls, persistent_ctx)  # noqa: E731
+            # blueprint = EndpointBlueprint(executor_class=make_executor)
+            blueprints.append(endpoint_cls(blueprint).endpoint)
+
+        self.create_endpoints(blueprints)
+
+
+
+    @staticmethod
+    def _import_attr(module_path: str, attr: str, *, kind: str):
+        module = import_module(module_path)
+        try:
+            return getattr(module, attr)
+        except AttributeError:
+            raise RuntimeError(f"{kind.capitalize()} '{attr}' not found in {module_path}") from None
 
 class APIServer:
     def __init__(self):
@@ -158,7 +165,7 @@ class RoutineExecutor:
 
     def run_routine(self):
         print(f"{datetime.datetime.now()} - Starting Routine")
-        return self.routine.run()
+        return self.routine.run(self.ctx)
 
 
 class EndpointBlueprint:
@@ -167,11 +174,11 @@ class EndpointBlueprint:
         self.endpointType = endpoint_type
         self.route = route
         self.method = method
-        self.handler = self.make_message_handler(executor_class)
-        self.endpoint = self.make_message_endpoint(self.handler)
+        self.handler = self.make_handler(executor_class)
+        self.endpoint = self.make_endpoint(self.handler)
 
     @staticmethod
-    def make_message_handler(executor_class):
+    def make_handler(executor_class):
         def handler(payload):
             # Create a new instance of the executor class that
             # already has a clean context plus the global context
@@ -190,7 +197,7 @@ class EndpointBlueprint:
         return handler
 
     @staticmethod
-    def make_message_endpoint(callback):
+    def make_endpoint(callback):
         def endpoint(payload):
             if callback:
                 response = callback(payload)
@@ -201,5 +208,62 @@ class EndpointBlueprint:
 
         return endpoint
 
-orc = Orchestrator()
-orc.load_json("./config.json")
+
+class OrchestratorUtils:
+
+    @staticmethod
+    def install_dependencies():
+        try:
+            OrchestratorUtils._install_folder("./endpoints")
+            OrchestratorUtils._install_folder("./services")
+            OrchestratorUtils._install_folder("./routines")
+        except Exception as e:
+            print(f"Error installing dependencies: {e}")
+
+    @staticmethod
+    def _install_folder(folder: str) -> bool:
+        if not Path(folder).exists(): return True
+        for file in Path(folder).iterdir():
+            if file.is_file():
+                with file.open("r", encoding="utf-8") as f:
+                    first_line = f.readline().strip()
+                    if first_line.startswith("#") and "pip install" in first_line:
+                        command = first_line.replace("#", "").strip()
+                        if command.startswith("pip "):
+                            command = f'"{sys.executable}" -m {command}'
+                            subprocess.run(command, shell=True, check=True)
+        return True
+
+# orc = Orchestrator()
+# orc.load_json("./config.json")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    group = parser.add_mutually_exclusive_group(required=False)
+    group.add_argument(
+        "-i",
+        "--install",
+        action="store_true",
+        help="Installs dependencies for all the endpoints, services and routines",
+    )
+    group.add_argument(
+        "-r",
+        "--run",
+        metavar="LINK",
+        type=str,
+        help="Path of the json blueprint",
+    )
+
+    args = parser.parse_args()
+    if args.install:
+        OrchestratorUtils.install_dependencies()
+        exit()
+
+    elif args.run:
+        path = args.run
+        orc = Orchestrator()
+        orc.load_json(path)
+        exit()
+
+    else:
+        print(f'Invalid args. Run "python orchestrator.py -h" for help.')
