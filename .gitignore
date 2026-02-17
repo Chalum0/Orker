@@ -1,0 +1,13 @@
+config.json
+mem.pkl
+mem.pkl.json
+routines/
+tests/
+front/
+endpoints/
+triggers/
+services/
+
+.idea
+.venv
+__pycache__
