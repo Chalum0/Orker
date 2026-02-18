@@ -151,6 +151,11 @@ class Context:
     def isset(self, key):
         return hasattr(self, key)
 
+    def create_if_not_exist(self, key, default):
+        if not self.isset(key):
+            self.__setattr__(key, default)
+        return self.__getattribute__(key)
+
 
 @dataclass
 class Utils:
@@ -174,11 +179,12 @@ class EndpointBlueprint:
         self.endpointType = endpoint_type
         self.route = route
         self.method = method
-        self.handler = self.make_handler(executor_class)
+        self.executor = executor_class()
+        self.handler = self.make_handler(self.executor)
         self.endpoint = self.make_endpoint(self.handler)
 
     @staticmethod
-    def make_handler(executor_class):
+    def make_handler(executor):
         def handler(payload):
             # Create a new instance of the executor class that
             # already has a clean context plus the global context
@@ -186,7 +192,6 @@ class EndpointBlueprint:
 
             # A new instance is created for each time the endpoint is called.
             # Each execution in isolated
-            executor = executor_class()
             # Dump payload in context
             for k, v in payload.items():
                 setattr(executor.ctx, f"payload_{k}", v)
