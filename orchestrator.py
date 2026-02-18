@@ -15,21 +15,27 @@ import sys
 class Orchestrator:
     def __init__(self):
         self._server = APIServer()
+        self._ui_server = APIServer()
         self.ctx = Context()
 
     # ---------- INTERNAL WORK ----------
     def start_server(self):
         self._server.start(host="127.0.0.1", port=5050)
+        # self._ui_server.start(host="0.0.0.0", port=5051)
         # Loop to prevent main thread from exiting causing some libraries to crash
         try:
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
             self.stop_server()
+            self.stop_server()
     def stop_server(self):
-        if self._server.server is None:
+        if self._server.server is None and self._ui_server.server is None:
             return
-        self._server.stop()
+        if self._server is not None:
+            self._server.stop()
+        if self._ui_server is not None:
+            self._ui_server.stop()
 
     def create_endpoints(self, endpoints):
         for endpoint in endpoints:
@@ -172,6 +178,16 @@ class RoutineExecutor:
         print(f"{datetime.datetime.now()} - Starting Routine")
         return self.routine.run(self.ctx)
 
+    def change_routine(self, new_routine):
+        self.routine = new_routine
+
+class JsonRoutine:
+    def __init__(self, j):
+        self.instructions = j
+
+    def run(self, ctx):
+        pass
+
 
 class EndpointBlueprint:
     def __init__(self, executor_class, name, endpoint_type, route, method):
@@ -182,6 +198,16 @@ class EndpointBlueprint:
         self.executor = executor_class()
         self.handler = self.make_handler(self.executor)
         self.endpoint = self.make_endpoint(self.handler)
+
+    def change_routine(self, new_routine):
+        if isinstance(new_routine, dict):
+            new_routine = self._create_routine_object_from_json(new_routine)
+
+        self.executor.change_routine(new_routine)
+
+    @staticmethod
+    def _create_routine_object_from_json(j) -> JsonRoutine:
+        return JsonRoutine(j)
 
     @staticmethod
     def make_handler(executor):
@@ -197,7 +223,6 @@ class EndpointBlueprint:
                 setattr(executor.ctx, f"payload_{k}", v)
 
             print(f" {datetime.datetime.now()} - got request")
-
             return executor.run_routine()
         return handler
 
@@ -212,6 +237,9 @@ class EndpointBlueprint:
             return jsonify({"content": None})
 
         return endpoint
+
+
+
 
 
 class OrchestratorUtils:
