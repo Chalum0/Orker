@@ -19,9 +19,10 @@ class Orchestrator:
         self.ctx = Context()
 
     # ---------- INTERNAL WORK ----------
-    def start_server(self):
+    def start_server(self, ui=False):
         self._server.start(host="127.0.0.1", port=5050)
-        # self._ui_server.start(host="0.0.0.0", port=5051)
+        if ui:
+            self._ui_server.start(host="0.0.0.0", port=5051)
         # Loop to prevent main thread from exiting causing some libraries to crash
         try:
             while True:
@@ -43,10 +44,11 @@ class Orchestrator:
 
     def load_json(self, src):
         data = self._read_json(src)
+        ui = data.get("ui", False)
         self._load_services(data.get("services", []))
         self._load_variables(data.get("variables", {}))
         self._load_endpoints(data.get("endpoints", []))
-        self.start_server()
+        self.start_server(ui=ui)
 
     @staticmethod
     def _read_json(src):
@@ -58,10 +60,9 @@ class Orchestrator:
 
 
     def _load_services(self, services):
-        for spec in services:
-            name = spec["name"]
-            svc_cls = self._import_attr(f"services.{name}", name, kind="service")
-            setattr(self.ctx, f"service_{name}", svc_cls)
+        for service in services:
+            svc_cls = self._import_attr(f"services.{service}", service, kind="service")
+            setattr(self.ctx, f"service_{service}", svc_cls)
 
     def _load_variables(self, variables) -> None:
         for key, value in variables.items():
@@ -71,18 +72,20 @@ class Orchestrator:
     def _load_endpoints(self, endpoints) -> None:
         blueprints = []
         for spec in endpoints:
-            name = spec["name"]
-            routine_name = spec["routine"]["name"]
+            try:
+                name = spec["name"]
+                route = spec["route"]
+                method = spec["method"]
+                routine_name = spec["routine"]["name"]
 
-            endpoint_cls = self._import_attr(f"endpoints.{name}", name, kind="endpoint")
-            routine_cls = self._import_attr(f"routines.{routine_name}", routine_name, kind="routine")
+                routine_cls = self._import_attr(f"routines.{routine_name}", routine_name, kind="routine")
 
-            persistent_ctx = Context()
-            make_routine_executor = lambda: RoutineExecutor(orchestrator=self, routine=routine_cls, persistent_ctx=persistent_ctx)
-            blueprint = lambda **kwargs: EndpointBlueprint(executor_class=make_routine_executor, **kwargs)
-            # make_executor = lambda: RoutineExecutor(self, routine_cls, persistent_ctx)  # noqa: E731
-            # blueprint = EndpointBlueprint(executor_class=make_executor)
-            blueprints.append(endpoint_cls(blueprint).endpoint)
+                persistent_ctx = Context()
+                make_routine_executor = lambda: RoutineExecutor(orchestrator=self, routine=routine_cls, persistent_ctx=persistent_ctx)
+                blueprint = Endpoint(executor_class=make_routine_executor, name=name, route=route, method=method)
+                blueprints.append(blueprint)
+            except Exception as e:
+                print(f"Cannot load Endpoint: {e}")
 
         self.create_endpoints(blueprints)
 
@@ -154,6 +157,13 @@ class Context:
     def __str__(self):
         return f"{self.__class__.__name__}({self.__dict__})"
 
+    def set(self, key: str, value):
+        setattr(self, key, value)
+        return value
+
+    def get(self, key: str):
+        return getattr(self, key, None)
+
     def isset(self, key):
         return hasattr(self, key)
 
@@ -184,15 +194,50 @@ class RoutineExecutor:
 class JsonRoutine:
     def __init__(self, j):
         self.instructions = j
+        self.operations = {"set": self._set_op}
+
+        self.vars = {}
+
 
     def run(self, ctx):
-        pass
+        self.vars = {}
+        for inst in self.instructions:
+            op_name = inst.get("op")
+            fn = self.operations.get(op_name)
+            if fn is None:
+                return KeyError(f"Unknown op: {op_name}")
+
+            params = dict(inst)
+            params.pop("op", None)
+
+            try:
+                fn(ctx, **params)
+            except Exception as e:
+                return e
+        return None
+
+    def _set_op(self, ctx, scope, name, value, **_):
+        # implement the action
+        if isinstance(value, dict):
+            value = self._calc(value)
+
+        if scope == "global":
+            ctx.glob.set(name, value)
+        elif scope == "routine":
+            ctx.set(name, value)
+        elif scope == "runtime":
+            self.vars[name] = value
 
 
-class EndpointBlueprint:
-    def __init__(self, executor_class, name, endpoint_type, route, method):
+    @staticmethod
+    def _calc(value):
+        return 1
+
+
+
+class Endpoint:
+    def __init__(self, executor_class, name, route, method):
         self.name = name
-        self.endpointType = endpoint_type
         self.route = route
         self.method = method
         self.executor = executor_class()
