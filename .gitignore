@@ -1,4 +1,5 @@
 config.json
+config.history.json
 mem.pkl
 mem.pkl.json
 routines/
