@@ -2,10 +2,12 @@ from threading import Thread, current_thread, main_thread, Lock
 from flask import Flask, jsonify, request
 from werkzeug.serving import make_server
 from importlib import import_module
+from croniter import croniter
 from pathlib import Path
 import subprocess
 import datetime
 import argparse
+import requests
 import inspect
 import json
 import time
@@ -17,11 +19,13 @@ class Orker:
         self._internal_server = APIServer()
         self._ui_server = APIServer()
         self.ctx = Context()
+        self.ctx.trigger_routine = self.trigger_routine
         self.src = None
-        self.ui = False
+        self.ui = ui
         self._restarting_internal_server = False
         self.write_config = write_config
         self._restart_internal_server_lock = Lock()
+        self.crons = {}
 
     # ---------- INTERNAL WORK ----------
     def _start_ui_server(self, ui):
@@ -41,14 +45,35 @@ class Orker:
                     self._restart_internal_server_lock.release()
             self._ui_server.make_endpoint("/api/restart", "GET", restart_handler)
 
+            def trigger_handler(payload):
+                data = request.get_json()
+                if not data:
+                    return jsonify({"error": "invalid json"}), 400
+
+                required = ["routine_endpoint", "method", "payload"]
+                for key in required:
+                    if key not in data:
+                        return jsonify({"error": f"missing field: {key}"}), 400
+
+                routine_endpoint = data["routine_endpoint"]
+                method = data["method"]
+                payload = data["payload"]
+
+                return jsonify({"ok": True, "result": self.trigger_routine(routine_endpoint, method, payload)}), 200
+            self._ui_server.make_endpoint("/api/trigger", "POST", trigger_handler)
+
             self._ui_server.start(host="0.0.0.0", port=5051)
     def _start_internal_server(self):
         self._internal_server.start(host="127.0.0.1", port=5050)
         # Loop to prevent main thread from exiting causing some libraries to crash
+        # And execute cron tasks
         if current_thread() is main_thread():
             try:
                 self._start_ui_server(self.ui)
                 while True:
+                    for task in self.crons.values():
+                        if task.should_execute():
+                            self.trigger_routine(task.routine_endpoint, task.method, task.payload)
                     time.sleep(1)
             except KeyboardInterrupt:
                 self._stop_servers()
@@ -85,7 +110,7 @@ class Orker:
         self._load_services(data.get("services", []))
         self._load_variables(data.get("variables", {}))
         self._load_endpoints(data.get("endpoints", []))
-
+        self._load_crons(data.get("crons", []))
         # if ui:
         #     def services_handler(payload):
         #         return jsonify(self.get_methods_of_services())
@@ -131,6 +156,17 @@ class Orker:
                 print(f"Cannot load Endpoint: {e}")
 
         self.create_endpoints(blueprints)
+    def _load_crons(self, crons):
+        for task in crons:
+            try:
+                name = task["name"]
+                endpoint = task["endpoint"]
+                method = task["method"]
+                payload = task["payload"]
+                schedule = task["schedule"]
+                self.crons[name] = CronTask(endpoint, method, payload, schedule)
+            except Exception as e:
+                print(f"Cannot load cron: {e}")
 
     def get_methods_of_services(self):
         s = self._get_all_services()
@@ -197,7 +233,7 @@ class Orker:
         if self.write_config:
             data: dict = self._read_json(self.src)
             endpoints: dict = data.get("endpoints", {})
-            endpoint: dict = next(e for e in endpoints if e["name"] == endpoint)
+            endpoint: dict = next(ep for ep in endpoints if ep["name"] == endpoint)
             if routine_type == "python":
                 endpoint["routine"] = {"type": "python", "name": routine}
             elif routine_type == "json":
@@ -206,6 +242,23 @@ class Orker:
             # TODO Save json to the config file
             with open(self.src, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
+
+    @staticmethod
+    def trigger_routine(routine_endpoint, method, payload=None):
+        if payload is None:
+            payload = {}
+        if method == "POST":
+            r = requests.post(
+                f"http://127.0.0.1/{routine_endpoint}",
+                json=payload
+            )
+        elif method == "GET":
+            r = requests.get(
+                f"http://127.0.0.1/{routine_endpoint}",
+            )
+        else:
+            r = {"ok": False, "error": f"Unknown method {method}"}
+        return r
 
 
 class APIServer:
@@ -398,6 +451,27 @@ class Endpoint:
             return jsonify({"content": None})
 
         return endpoint
+
+
+class CronTask:
+    def __init__(self, routine_endpoint, method, payload, schedule):
+        self.routine_endpoint = routine_endpoint
+        self.method = method
+        self.payload = payload
+        self.schedule = schedule
+        self.iter = croniter(schedule, datetime.datetime.now())
+        self.next_run = self.iter.get_next(datetime.datetime)
+
+    def should_execute(self):
+        now = datetime.datetime.now()
+
+        if now >= self.next_run:
+            self.next_run = self.iter.get_next(datetime.datetime)
+            return True
+
+        return False
+
+
 
 
 class OrchestratorUtils:
