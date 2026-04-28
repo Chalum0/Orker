@@ -1,0 +1,5 @@
+packages/databases/orker.db
+.venv
+.python
+.idea
+**/__pycache__
