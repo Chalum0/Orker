@@ -57,11 +57,18 @@ class DBManager:
     def get_nodes_ips(self):
         return [node.ip for node in self.Node.select(self.Node.ip)]
 
+    def get_nodes(self):
+        return self.Node.select()
+
     def get_node_by_id(self, id):
         return self.Node.get_or_none(self.Node.id == id)
 
     def get_node_by_ip(self, ip):
         return self.Node.get_or_none(self.Node.ip == ip)
+
+    def get_node_current_load(self, id):
+        node = self.get_node_by_id(id)
+        return node.current_load
 
     def check_secret(self, ip, id, secret):
         node = self.get_node_by_id(id)
@@ -77,6 +84,14 @@ class DBManager:
             .select()
             .where(self.Node.available)
             .order_by(self.Node.current_load.asc())
+            .first()
+        )
+
+    def get_node_secret_from_ip(self, ip):
+        return (
+            self.Node
+            .select(self.Node.secret)
+            .where(self.Node.ip == ip)
             .first()
         )
 

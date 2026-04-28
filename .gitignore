@@ -1,4 +1,4 @@
-packages/databases/orker.db
+server/packages/databases/orker.db
 .venv
 .python
 .idea

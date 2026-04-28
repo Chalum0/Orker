@@ -1,11 +1,11 @@
-from threading import Thread, current_thread, main_thread, Lock
 from packages.core import APIServer, RoutineManager
+from threading import current_thread, main_thread
 from packages.core.DBManager import DBManager
+from packages.core.FileManager import send_package_to_node
 from packages.core.HashManager import *
-from flask import Flask, request
+from flask import request
 from uuid import uuid4
 import requests
-import hashlib
 import time
 
 
@@ -29,8 +29,13 @@ class Orker:
         self._internal_server.start("127.0.0.1", 5000)
         if current_thread() is main_thread():
             try:
+                previous_hashes = hash_services_and_routines()
                 while True:
                     time.sleep(1)
+                    self._check_nodes()
+                    if not previous_hashes == hash_services_and_routines():
+                        self._update_nodes()
+                    # self._update_node_files(self._db_manager.get_best_node_for_routine().ip)
                     self._run_routines()
             except KeyboardInterrupt:
                 self._stop_internal_server()
@@ -124,6 +129,49 @@ class Orker:
             if best_node is None:
                 break
             self._routine_manager.run_routine(best_node, self._db_manager)
+
+    def _check_node_files(self, ip):
+        """returns whether the node is up to date"""
+        response = requests.get(f"http://{ip}:5001/hash", timeout=0.5)
+        data = response.json()
+        hashes = hash_services_and_routines()
+        return hashes["routines"] == data["routines"] and hashes["services"] == data["services"]
+
+    def _update_node_files(self, node):
+        while self._db_manager.get_node_current_load(node.id) > 0:
+            time.sleep(0.5)
+
+        ip = node.ip
+        secret = node.secret
+        url = f"http://{ip}:5001"
+        response = send_package_to_node(
+            node_secret=secret,
+            node_url=url,
+            package_type="services",
+            folder_path="packages/services"
+        )
+        response2 = send_package_to_node(
+            node_secret=secret,
+            node_url=url,
+            package_type="services",
+            folder_path="packages/services"
+        )
+        response3 = requests.post(f"{url}/restart", json={"secret": secret}).json()
+        return response["status"] == "ok" and response2["status"] == "ok" and response3["status"] == "ok"
+
+    def _update_nodes(self):
+        self._db_manager.set_nodes_as_unavailable()
+        for node in self._db_manager.get_nodes():
+            if self._update_node_files(node):
+                self._db_manager.set_node_as_available(node.id)
+
+    def _check_nodes(self):
+        for node in self._db_manager.get_nodes():
+            if not self._check_node_files(node.ip):
+                self._update_node_files(node)
+
+
+
 
 
 
