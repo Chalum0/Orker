@@ -12,3 +12,8 @@ class Orker:
             self.server = APIServer.APIServer()
         self.server.start(host=self.host, port=self.port)
 
+    def _stop_server(self):
+        if type(self.server) == APIServer.APIServer:
+            self.server.stop()
+            self.server = None
+
