@@ -11,3 +11,4 @@ services/
 .idea
 .venv
 __pycache__
+.python
