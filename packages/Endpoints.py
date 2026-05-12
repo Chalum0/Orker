@@ -7,6 +7,7 @@ class Endpoints:
 
     def _create_endpoints(self, restart_function):
         return []
+    
         # def restart(payload):
         #     restart_function()
         #     return {"status": "ok"}

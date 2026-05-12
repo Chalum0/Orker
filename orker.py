@@ -1,4 +1,4 @@
-from packages import APIServer, Endpoints
+from packages import APIServer, Endpoints, ConfigManager
 
 
 class Orker:
@@ -6,6 +6,8 @@ class Orker:
         self.host = "127.0.0.1"
         self.port = 5000
         self.server = None
+        self.config_manager = ConfigManager.ConfigManager()
+        self.config = self.config_manager.get_config()
 
     def _start_server(self):
         if type(self.server) != APIServer.APIServer :
