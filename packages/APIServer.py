@@ -1,7 +1,8 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, abort
 from packages.Context import Context
 from threading import Thread
 import logging
+import secrets
 
 try:
     from waitress.server import create_server
@@ -15,11 +16,25 @@ class No200Filter(logging.Filter):
 
 
 class APIServer:
-    def __init__(self):
+    def __init__(self, secret: str):
+        self.secret = secret
         self.app = Flask(__name__)
         self.server = None
         self.thread = None
-        logging.getLogger("werkzeug").addFilter(No200Filter())
+
+        logging.getLogger("werkzeug").addFilter(No200Filter())  # Prevent the logging of successful (HTTP 200) requests
+
+        @self.app.before_request
+        def check_bearer_token():
+            auth = request.headers.get("Authorization", "")
+
+            if not auth.startswith("Bearer "):
+                abort(401)
+
+            token = auth.removeprefix("Bearer ").strip()
+
+            if not secrets.compare_digest(token, self.secret):
+                abort(403)
 
     def make_endpoint(self, route, method, handler):
         def endpoint():

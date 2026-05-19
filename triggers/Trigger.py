@@ -4,7 +4,11 @@ from requests.adapters import HTTPAdapter
 
 
 class Trigger:
-    def __init__(self, address):
+    def __init__(self, address, secret, custom_headers=None):
+        if custom_headers is None:
+            custom_headers = {}
+        self.custom_headers = custom_headers
+        self.secret = secret
         self.address = address
         self.session = requests.Session()
         self.session.mount(
@@ -26,7 +30,7 @@ class Trigger:
         self.close()
 
     def send_post(self, body):
-        response = self.session.post(self.address, json=body)
+        response = self.session.post(self.address, json=body, headers={ **self.custom_headers, "Authorization": f"Bearer {self.secret}"})
         response.raise_for_status()
         try:
             return response.json()

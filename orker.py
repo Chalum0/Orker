@@ -22,9 +22,9 @@ class Orker:
         self.should_restart = False
         self.hashes = {}
         self.hot_reload = hot_reload
+        self.server_secret = "change_me"
 
     # ---------- SERVER HANDLING ----------
-
     def start(self):
         print(f"Starting server on http://{self.host}:{self.port}.")
         while True:
@@ -59,6 +59,9 @@ class Orker:
             self.server.stop()
             self.server = None
 
+
+
+
     # ---------- JSON CONFIG ----------
     def load_json(self, src):
         self.hashes = {}
@@ -69,6 +72,7 @@ class Orker:
         self._load_variables(config.get("variables", {}))
         self._load_routines(config.get("routines", []))
         self._load_endpoints(config.get("endpoints", []))
+        self.server_secret = config.get("server_secret", "change_me")
 
         self.hashes[src] = self.file_hash(src)
 
