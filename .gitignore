@@ -14,3 +14,4 @@ __pycache__
 triggers/bl.json
 triggers/BLTrigger.py
 routines/BLRoutine.py
+test.py

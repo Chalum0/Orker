@@ -35,7 +35,7 @@ class Orker:
 
     def _start_server(self):
         if type(self.server) != APIServer.APIServer :
-            self.server = APIServer.APIServer()
+            self.server = APIServer.APIServer(self.server_secret)
         self.load_json(self.config_path)
         self.server.start(host=self.host, port=self.port)
         if current_thread() is main_thread():
@@ -73,6 +73,7 @@ class Orker:
         self._load_routines(config.get("routines", []))
         self._load_endpoints(config.get("endpoints", []))
         self.server_secret = config.get("server_secret", "change_me")
+        self.server.change_secret(self.server_secret)
 
         self.hashes[src] = self.file_hash(src)
 
@@ -82,7 +83,7 @@ class Orker:
             raise FileNotFoundError(src)
         try:
             return json.loads(src.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
             return self.config
 
     def _load_services(self, services):
