@@ -24,17 +24,9 @@ class APIServer:
 
         logging.getLogger("werkzeug").addFilter(No200Filter())  # Prevent the logging of successful (HTTP 200) requests
 
-        @self.app.before_request
-        def check_bearer_token():
-            auth = request.headers.get("Authorization", "")
 
-            if not auth.startswith("Bearer "):
-                abort(401)
-
-            token = auth.removeprefix("Bearer ").strip()
-
-            if not secrets.compare_digest(token, self.secret):
-                abort(403)
+    def change_secret(self, secret):
+        self.secret = secret
 
     def make_endpoint(self, route, method, handler):
         def endpoint():
@@ -57,11 +49,25 @@ class APIServer:
         )
         return endpoint
 
+    def add_token_verification(self):
+        def check_bearer_token():
+            auth = request.headers.get("Authorization", "")
+
+            if not auth.startswith("Bearer "):
+                abort(401)
+
+            token = auth.removeprefix("Bearer ").strip()
+
+            if not secrets.compare_digest(token, self.secret):
+                abort(403)
+        self.app.before_request(check_bearer_token)
+
     def start(self, host="0.0.0.0", port=5000, threads=8):
         """Boot the HTTP server in a background thread using Waitress."""
         if self.server is not None:
             return
 
+        self.add_token_verification()
         if create_server is None:
             raise RuntimeError(
                 "waitress is not installed. Install it with: pip install waitress"
