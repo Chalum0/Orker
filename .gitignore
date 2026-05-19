@@ -1,0 +1,16 @@
+config.json
+mem.pkl
+mem.pkl.json
+tests/
+front/
+endpoints/
+services/
+
+.idea
+.venv
+__pycache__
+.python
+
+triggers/bl.json
+triggers/BLTrigger.py
+routines/BLRoutine.py
