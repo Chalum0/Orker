@@ -113,7 +113,11 @@ class Orker:
         for spec in endpoints:
             try:
                 route = spec["route"]
-                method = spec["method"]
+                t = spec["type"]
+                if t not in ["HTTP", "WS"]:
+                    raise Exception(f"Endpoint '{route}' cannot be of type '{t}'. Must be 'HTTP' or 'WS'.")
+                if t == "HTTP":
+                    method = spec["method"]
                 routine = spec["routine"]
                 try:
                     if isinstance(routine, str):
@@ -127,7 +131,11 @@ class Orker:
                 if not isinstance(self.server, APIServer.APIServer):
                     raise Exception(f"Inernal Error: Endpoint loaded before server instance. Report this issue.")
 
-                self.server.make_endpoint(route, method, r(self.context).run)
+                # self.server.make_endpoint(route, method, r(self.context).run)
+                if t == "HTTP":
+                    self.server.make_http_endpoint(route=route, method=method, handler=r(self.context).run)
+                else:
+                    self.server.make_ws_endpoint(route=route, handler=r(self.context).run)
 
             except Exception as e:
                 print(f"Could not create Endpoint: {e}")

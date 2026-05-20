@@ -2,3 +2,7 @@ flask
 waitress
 importlib
 requests
+uvicorn
+fastapi
+websockets
+websocket-client
