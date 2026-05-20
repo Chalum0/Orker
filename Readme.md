@@ -11,3 +11,28 @@ Endpoints now take a "type" value in the config that must be either "HTTP" or "W
 Need to implement:
 - worker_count
 - max worker amount for http server
+
+exemple of config.json covering all possible senarii:
+
+```json
+{
+    "server_secret": "1234",
+    "routines": [
+        "TestRoutine"
+    ],
+    "endpoints": [
+        {
+            "route": "/test",
+            "type": "HTTP",
+            "method": "POST",
+            "routine": "TestRoutine"
+        },
+        {
+            "route": "/testws",
+            "type": "WS",
+            "routine": "TestRoutine"
+        }
+    ]
+}
+```
+
