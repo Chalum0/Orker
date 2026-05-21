@@ -10,11 +10,23 @@ import time
 import uuid
 
 
-class Trigger:
-    def __init__(self, address, secret, custom_headers=None):
-        self.custom_headers = custom_headers or {}
-        self.secret = secret
+class TriggerParent:
+    def __init__(self, address, secret, custom_headers=None, idle_timeout=2):
         self.address = address
+        self.secret = secret
+        self.custom_headers = custom_headers or {}
+        self.idle_timeout = idle_timeout
+
+    def send(self, body, timeout=None):
+        return self._s(body, timeout=timeout)
+
+    def send_all(self, bodies, timeout=None):
+        for body in bodies:
+            self._s(body, timeout=timeout)
+
+class Trigger(TriggerParent):
+    def __init__(self, address, secret, custom_headers=None, idle_timeout=None):
+        TriggerParent.__init__(self, address=address, secret=secret,custom_headers=custom_headers, idle_timeout=idle_timeout)
         self.session = requests.Session()
         self.session.mount(
             "http://",
@@ -34,7 +46,7 @@ class Trigger:
     def __exit__(self, exc_type, exc, tb):
         self.close()
 
-    def send_post(self, body):
+    def _s(self, body, timeout=None):
         response = self.session.post(self.address, json=body, headers={ **self.custom_headers, "Authorization": f"Bearer {self.secret}"})
         response.raise_for_status()
         try:
@@ -42,12 +54,9 @@ class Trigger:
         except json.JSONDecodeError:
             raise Exception(f"Malformed response for {self.address}: \n {response.text} {'\n'*2} body: {body}")
 
-class SockTrigger:
+class SockTrigger(TriggerParent):
     def __init__(self, address, secret, custom_headers=None, idle_timeout=2):
-        self.address = address
-        self.secret = secret
-        self.custom_headers = custom_headers or {}
-        self.idle_timeout = idle_timeout
+        TriggerParent.__init__(self, address=address, secret=secret,custom_headers=custom_headers, idle_timeout=idle_timeout)
 
         self.jobs = queue.Queue()
         self.worker = None
@@ -128,7 +137,7 @@ class SockTrigger:
         )
         self.worker.start()
 
-    def send(self, body, timeout=None):
+    def _s(self, body, timeout=None):
         if self.closed:
             raise RuntimeError("Trigger Closed")
 
@@ -158,12 +167,9 @@ class SockTrigger:
         self.close()
 
 
-class AsyncTrigger:
+class AsyncTrigger(TriggerParent):
     def __init__(self, address, secret, custom_headers=None, idle_timeout=2):
-        self.address = f"{address}/async"
-        self.secret = secret
-        self.custom_headers = custom_headers or {}
-        self.idle_timeout = idle_timeout
+        TriggerParent.__init__(self, address=f"{address}/async", secret=secret,custom_headers=custom_headers, idle_timeout=idle_timeout)
 
         self.ws = None
         self.pending = {}
@@ -205,7 +211,7 @@ class AsyncTrigger:
         self.receiver_task = asyncio.create_task(self._receiver())
         self.idle_task = asyncio.create_task(self._idle_watcher())
 
-    def send(self, body):
+    def _s(self, body, timeout=None):
         future = asyncio.run_coroutine_threadsafe(
             self._send(body),
             self.loop,

@@ -12,11 +12,11 @@ Need to implement:
 - worker_count
 - max worker amount for http server
 
-exemple of config.json covering all possible senarii:
+exemple of config.json covering all possible senarios:
 
 ```json
 {
-    "server_secret": "1234",
+    "server_secret": "change_me",
     "routines": [
         "TestRoutine"
     ],
