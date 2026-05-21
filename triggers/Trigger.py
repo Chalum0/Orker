@@ -1,3 +1,4 @@
+from websocket import create_connection, WebSocketTimeoutException
 from requests.adapters import HTTPAdapter
 import websockets
 import threading
@@ -24,7 +25,7 @@ class TriggerParent:
         for body in bodies:
             self._s(body, timeout=timeout)
 
-class Trigger(TriggerParent):
+class HTTPTrigger(TriggerParent):
     def __init__(self, address, secret, custom_headers=None, idle_timeout=None):
         TriggerParent.__init__(self, address=address, secret=secret,custom_headers=custom_headers, idle_timeout=idle_timeout)
         self.session = requests.Session()
@@ -54,7 +55,7 @@ class Trigger(TriggerParent):
         except json.JSONDecodeError:
             raise Exception(f"Malformed response for {self.address}: \n {response.text} {'\n'*2} body: {body}")
 
-class SockTrigger(TriggerParent):
+class WebSocketSyncTrigger(TriggerParent):
     def __init__(self, address, secret, custom_headers=None, idle_timeout=2):
         TriggerParent.__init__(self, address=address, secret=secret,custom_headers=custom_headers, idle_timeout=idle_timeout)
 
@@ -167,160 +168,110 @@ class SockTrigger(TriggerParent):
         self.close()
 
 
-class AsyncTrigger(TriggerParent):
+class WebSocketAsyncTrigger(TriggerParent):
     def __init__(self, address, secret, custom_headers=None, idle_timeout=2):
         TriggerParent.__init__(self, address=f"{address}/async", secret=secret,custom_headers=custom_headers, idle_timeout=idle_timeout)
 
         self.ws = None
+        self.lock = threading.Lock()
+        self.running = False
+        self.reader_thread = None
+
         self.pending = {}
-        self.futures = []
+        self.done = []
+        self.order = []
 
-        self.receiver_task = None
-        self.idle_task = None
-
-        self.send_lock = asyncio.Lock()
-        self.send_lock = None
-        self.last_activity = 0
-
-        self.loop = asyncio.new_event_loop()
-        self.thread = threading.Thread(target=self._run_loop, daemon=True)
-        self.thread.start()
-
-    def _run_loop(self):
-        asyncio.set_event_loop(self.loop)
-        self.loop.run_forever()
-
-    async def connect(self):
-        """Connects to the server and defines a receiver and a watcher"""
-        if self.send_lock is None:
-            self.send_lock = asyncio.Lock()
-        if self.ws is not None:
-            return
-
+    def _headers(self):
         headers = {
             **self.custom_headers,
             "Authorization": f"Bearer {self.secret}",
         }
+        return [f"{k}: {v}" for k, v in headers.items()]
 
-        self.ws = await websockets.connect(
-            self.address,
-            additional_headers=headers
+    def connect(self):
+        if self.ws:
+            return
+
+        self.ws = create_connection(
+            self.address.replace("http://", "ws://").replace("https://", "wss://"),
+            header=self._headers(),
+            timeout=self.idle_timeout,
         )
 
-        self.last_activity = time.monotonic()
-        self.receiver_task = asyncio.create_task(self._receiver())
-        self.idle_task = asyncio.create_task(self._idle_watcher())
+        self.running = True
+        self.reader_thread = threading.Thread(target=self._reader, daemon=True)
+        self.reader_thread.start()
 
-    def _s(self, body, timeout=None):
-        future = asyncio.run_coroutine_threadsafe(
-            self._send(body),
-            self.loop,
-        )
+    def _reader(self):
+        while self.running:
+            try:
+                msg = self.ws.recv()
+                data = json.loads(msg)
 
-        # waits until request sent, not until server finished
-        return future.result()
-
-    async def _send(self, body):
-        await self.connect()
-
-        request_id = str(uuid.uuid4())
-        future = self.loop.create_future()
-
-        self.pending[request_id] = future
-        self.futures.append(future)
-
-        async with self.send_lock:
-            await self.ws.send(json.dumps({
-                "id": request_id,
-                "body": body
-            }))
-
-        self.last_activity = time.monotonic()
-
-    async def _get_results(self):
-        return await asyncio.gather(*self.futures)
-
-    def get_results(self):
-        future = asyncio.run_coroutine_threadsafe(
-            self._get_results(),
-            self.loop,
-        )
-
-        return future.result()
-
-    async def _receiver(self):
-        try:
-            async for raw in self.ws:
-                message = json.loads(raw)
-                msg_type = message.get("type")
+                msg_type = data.get("type")
+                request_id = data.get("id")
 
                 if msg_type == "ack":
-                    self.last_activity = time.monotonic()
-                    continue
+                    self.pending[request_id] = "running"
 
-                request_id = message.get("id")
-                future = self.pending.pop(request_id, None)
+                elif msg_type in ("result", "error"):
+                    self.pending.pop(request_id, None)
+                    self.done.append(data)
 
-                if future is None or future.done():
-                    continue
-
-                if msg_type == "result":
-                    future.set_result(message.get("result"))
-
-                elif msg_type == "error":
-                    future.set_exception(message.get("error"))
-
-                self.last_activity = time.monotonic()
-
-
-        except Exception as e:
-            for future in self.pending.values():
-                if not future.done():
-                    future.set_exception(e)
-            self.pending.clear()
-
-    async def _idle_watcher(self):
-        while True:
-            await asyncio.sleep(0.2)
-
-            if self.ws is None:
-                break
-
-            if self.pending:
+            except WebSocketTimeoutException:
                 continue
-
-            if time.monotonic() - self.last_activity >= self.idle_timeout:
-                await self._close_socket()
+            except Exception:
+                self.running = False
                 break
 
-    async def _close_socket(self):
-        if self.ws is not None:
-            await self.ws.close()
+    def _s(self, body, timeout=None):
+        """
+        Sync function.
+        Sends job.
+        Returns request id.
+        Result later in self.done.
+        """
+        self.connect()
+
+        request_id = str(uuid.uuid4())
+        self.order.append(request_id)
+
+        payload = {
+            "id": request_id,
+            "body": body,
+        }
+
+        with self.lock:
+            self.pending[request_id] = "sent"
+            self.ws.send(json.dumps(payload))
+
+        return request_id
+
+    def get_done(self, ordered=False):
+        items = self.done[:]
+        self.done.clear()
+        if ordered:
+            return sort_done(items, self.order)
+        return items
+
+    def close(self):
+        self.running = False
+        if self.ws:
+            self.ws.close()
             self.ws = None
 
-        self.receiver_task = None
-        self.idle_task = None
-
-    async def _close(self):
-        await self.close()
-
-    def stop(self):
-        future = asyncio.run_coroutine_threadsafe(
-            self.close(),
-            self.loop,
-        )
-        future.result()
-
-        self.loop.call_soon_threadsafe(self.loop.stop)
-        self.thread.join(timeout=5)
-
-    async def close(self):
-        await self._close_socket()
-
-    async def __aenter__(self):
-        await self.connect()
+    def __enter__(self):
+        self.connect()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.close()
-        
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+
+def sort_done(done, order):
+    by_id = {item["id"]: item for item in done}
+
+    return [
+        by_id[id_]
+        for id_ in order
+        if id_ in by_id
+    ]
