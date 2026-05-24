@@ -72,39 +72,65 @@ class Orker:
         self._load_variables(config.get("variables", {}))
         self._load_routines(config.get("routines", []))
         self._load_endpoints(config.get("endpoints", []))
-        self._load_gateways(config.get("gateways", []))
+        self._load_gateways(config.get("gateways", {}))
         self.server_secret = config.get("server_secret", "change_me")
         self.server.change_secret(self.server_secret)
 
         self.hashes[src] = self.file_hash(src)
 
     def _load_gateways(self, gateways):
-        gtw = getattr(self.context, "gateways", None)
+        gtw = getattr(self.context, "gateway", None)
         if gtw is None:
             gtw = Context.Context()
-            self.context.__setattr__("gateways", gtw)
-        for spec in gateways:
+            self.context.gateways = gtw
+
+        for name, params in gateways.items():
+
             try:
-                service = spec["service"]
-                params = spec.get("params", {})
+                if not isinstance(params, dict):
+                    raise AttributeError(f"Gateway {name} does not have valid params.")
 
-                try:
-                    if isinstance(service, str):
-                        s = self.context.services.__getattribute__(service)
+                if Path(f"gateways/{name}.py").exists():
 
-                        existing = getattr(gtw, service, None)
-                        if existing is not None and isinstance(existing, s):
-                                continue
-                        gtw.__setattr__(service, s(**params))
+                    should_load = f"gateways/{name}.py" not in self.hashes.keys()
+                    if not should_load:
+                        should_load = self.hashes[f"gateways/{name}.py"] == self.file_hash(f"gateways/{name}.py")
 
-                    else:
-                        raise Exception("Invalid routine type (must be str or json).")
-                except AttributeError:
-                    raise Exception(f"Service {service} does not exist. Could not create a gateway for it.")
+                    if should_load:
+                        try:
+                            self.hashes[f"gateways/{name}.py"] = self.file_hash(f"gateways/{name}.py")
+                            gtw_cls = self._import_attr(f"gateways.{name}", name, kind="gateway")
+                            gtw.__setattr__(name, gtw_cls(**params))
 
+                        except RuntimeError as e:
+                            self.hashes[f"gateways/{name}.py"] = self.file_hash(f"gateways/{name}.py")
+                            print(f"Unable to load gateway {name} because the file does not contain a '{name}' class. ({e})")
 
             except Exception as e:
-                print(f"Could not create Endpoint: {e}")
+                print(f"Could not create Gateway: {e}")
+
+        # gtw = getattr(self.context, "gateways", None)
+        # if gtw is None:
+        #     gtw = Context.Context()
+        #     self.context.__setattr__("gateways", gtw)
+        # for spec in gateways:
+        #     try:
+        #         service = spec["service"]
+        #         params = spec.get("params", {})
+        #
+        #         try:
+        #             if isinstance(service, str):
+        #                 s = self.context.services.__getattribute__(service)
+        #
+        #                 existing = getattr(gtw, service, None)
+        #                 if existing is not None and isinstance(existing, s):
+        #                         continue
+        #                 gtw.__setattr__(service, s(**params))
+        #
+        #             else:
+        #                 raise Exception("Invalid routine type (must be str or json).")
+        #         except AttributeError:
+        #             raise Exception(f"Service {service} does not exist. Could not create a gateway for it.")
 
 
     def _read_json(self, src):
@@ -194,10 +220,12 @@ class Orker:
 
             return h.hexdigest()
         except FileNotFoundError:
+            # print(f"could not find file: '{path}'")
             return 0
 
     def check_hashes(self):
         for path, old_hash in self.hashes.items():
+            # print(path, "same" if self.file_hash(path) == old_hash else "different", self.file_hash(path), old_hash)
             if self.file_hash(path) != old_hash:
                 self.should_restart = True
 

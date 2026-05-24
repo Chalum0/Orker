@@ -34,7 +34,10 @@ exemple of config.json covering all possible senarios:
             "type": "WS",
             "routine": "TestRoutine"
         }
-    ]
+    ],
+    "gateways": {
+        "TestGateway": {}
+    }
 }
 ```
 
