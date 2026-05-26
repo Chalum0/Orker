@@ -80,16 +80,12 @@ class WebSocketSyncTrigger(TriggerParent):
         return ws
 
     def _worker_loop(self):
-        print("Worker loop created")
         ws = None
 
         # If incorrect secret: set fail for job and close the worker
         try:
-            print("creating ws")
             ws = self._connect()
-            print("created ws")
         except Exception as e:
-            print(f"failed to create ws: {e}")
             try:
                 body, result_queue = self.jobs.get_nowait()
                 result_queue.put((False, e))
@@ -129,7 +125,6 @@ class WebSocketSyncTrigger(TriggerParent):
             except Exception as e:
                 result_queue.put((False, e))
                 break
-        print("worker loop closed")
         ws.close()
         self.worker = None
 
@@ -147,20 +142,14 @@ class WebSocketSyncTrigger(TriggerParent):
         if self.closed:
             raise RuntimeError("Trigger Closed")
 
-        print("a")
         result_queue = queue.Queue(maxsize=1)
-        print("b")
         self._ensure_worker()
-        print("c")
         self.jobs.put((body, result_queue))
-        print("d")
 
         ok, value = result_queue.get(timeout=timeout)
-        print("e")
 
         if ok:
             return value
-        print("f")
 
         raise value
 
