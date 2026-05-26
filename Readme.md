@@ -4,6 +4,8 @@ Current roadmap:
 
 write readme -> make better roadmap -> implement server secret -> implement load balancer for servers -> implement crons -> add demo and doc -> handle webhooks for routine completion
 
+Gateways: in this version, oker allows to create gateways. Gateways are a service that is running in a single instance instead of being instanciated each time. Usefull for services that can stay connected to a server and might be submitted to rate limiting such as chat services.
+Gateways are not restarted with the server's hotreload except if changed.
 
 Websocket:
 In this version, orker allows for websocket endpoint. That allows to keep a connection alive and go from 1.2k requests per second to about 6.2k (for very light routines like the test one.)\
@@ -32,7 +34,10 @@ exemple of config.json covering all possible senarios:
             "type": "WS",
             "routine": "TestRoutine"
         }
-    ]
+    ],
+    "gateways": {
+        "TestGateway": {}
+    }
 }
 ```
 
