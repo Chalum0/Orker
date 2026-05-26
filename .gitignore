@@ -20,4 +20,4 @@ ClusterCore.py
 demo.py
 testasyncclient.py
 
-SockTrigger.py
+SMSTrigger.py
