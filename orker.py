@@ -73,10 +73,21 @@ class Orker:
         self._load_routines(config.get("routines", []))
         self._load_endpoints(config.get("endpoints", []))
         self._load_gateways(config.get("gateways", {}))
+        self._load_triggers(config.get("ExternalTriggers", []))
         self.server_secret = config.get("server_secret", "change_me")
         self.server.change_secret(self.server_secret)
 
         self.hashes[src] = self.file_hash(src)
+
+    def _read_json(self, src):
+        src = Path(src)
+        if not src.exists():
+            raise FileNotFoundError(src)
+        try:
+            return json.loads(src.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as e:
+            return self.config
+
 
     def _load_gateways(self, gateways):
         gtw = getattr(self.context, "gateway", None)
@@ -108,40 +119,6 @@ class Orker:
 
             except Exception as e:
                 print(f"Could not create Gateway: {e}")
-
-        # gtw = getattr(self.context, "gateways", None)
-        # if gtw is None:
-        #     gtw = Context.Context()
-        #     self.context.__setattr__("gateways", gtw)
-        # for spec in gateways:
-        #     try:
-        #         service = spec["service"]
-        #         params = spec.get("params", {})
-        #
-        #         try:
-        #             if isinstance(service, str):
-        #                 s = self.context.services.__getattribute__(service)
-        #
-        #                 existing = getattr(gtw, service, None)
-        #                 if existing is not None and isinstance(existing, s):
-        #                         continue
-        #                 gtw.__setattr__(service, s(**params))
-        #
-        #             else:
-        #                 raise Exception("Invalid routine type (must be str or json).")
-        #         except AttributeError:
-        #             raise Exception(f"Service {service} does not exist. Could not create a gateway for it.")
-
-
-    def _read_json(self, src):
-        src = Path(src)
-        if not src.exists():
-            raise FileNotFoundError(src)
-        try:
-            return json.loads(src.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as e:
-            return self.config
-
     def _load_services(self, services):
         s = Context.Context()
         for service in services:
@@ -195,6 +172,22 @@ class Orker:
 
             except Exception as e:
                 print(f"Could not create Endpoint: {e}")
+    def _load_triggers(self, triggers):
+        t = Context.Context()
+        for trigger in triggers:
+            name = trigger["name"]
+            params = trigger["params"]
+            routines = trigger["routines"]
+            self.hashes[f"triggers/{name}.py"] = self.file_hash(f"triggers/{name}.py")
+            if Path(f"triggers/{name}.py").exists():
+                try:
+                    trg_cls = self._import_attr(f"triggers.{name}", name, kind="trigger")
+                    routines = [getattr(self.context.routines, r, None) for r in routines if getattr(self.context.routines, r, None) is not None]
+                    trig = trg_cls(routines, **params)
+
+                except Exception as e:
+                    print(f"Could not load trigger: {e}")
+
 
 
     @staticmethod
