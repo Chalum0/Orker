@@ -1,6 +1,6 @@
 class TestGateway:
-    def __init__(self):
+    def __init__(self, server):
         pass
 
-    def run(self):
-        return 1
+    def send_sms(self, phone_number, message):
+        print(f'Sending "{message}" to {phone_number}"')

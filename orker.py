@@ -2,9 +2,9 @@ import sys
 sys.dont_write_bytecode = True
 
 
+from packages import APIServer, Context, TriggerManager
 from importlib import import_module, invalidate_caches
 from threading import current_thread, main_thread
-from packages import APIServer, Context
 from pathlib import Path
 import hashlib
 import json
@@ -64,7 +64,7 @@ class Orker:
 
     # ---------- JSON CONFIG ----------
     def load_json(self, src):
-        self.hashes = {}
+        # self.hashes = {}
         config = self._read_json(src)
         self.config = config
 
@@ -73,7 +73,7 @@ class Orker:
         self._load_routines(config.get("routines", []))
         self._load_endpoints(config.get("endpoints", []))
         self._load_gateways(config.get("gateways", {}))
-        self._load_triggers(config.get("ExternalTriggers", []))
+        self._load_triggers(config.get("triggers", []))
         self.server_secret = config.get("server_secret", "change_me")
         self.server.change_secret(self.server_secret)
 
@@ -173,20 +173,31 @@ class Orker:
             except Exception as e:
                 print(f"Could not create Endpoint: {e}")
     def _load_triggers(self, triggers):
-        t = Context.Context()
+        if getattr(self.context, "triggers", None) is None:
+            self.context.triggers = TriggerManager.TriggerManager()
         for trigger in triggers:
             name = trigger["name"]
+            path = f"triggers/{name}.py"
+            if path in self.hashes.keys():
+                if self.hashes[path] == self.file_hash(path):
+                    # check if the routines are still up to date
+                    for file, h in self.context.triggers.triggers[name].hashes.items():
+                        if h != self.hashes[f"routines/{file}.py"]:
+                            break
+                    else:
+                        continue
             params = trigger["params"]
-            routines = trigger["routines"]
+            routines_names = trigger["routines"]
             self.hashes[f"triggers/{name}.py"] = self.file_hash(f"triggers/{name}.py")
             if Path(f"triggers/{name}.py").exists():
                 try:
                     trg_cls = self._import_attr(f"triggers.{name}", name, kind="trigger")
-                    routines = [getattr(self.context.routines, r, None) for r in routines if getattr(self.context.routines, r, None) is not None]
-                    trig = trg_cls(routines, **params)
-
+                    routines = [(getattr(self.context.routines, r, None), (r, self.file_hash(f"routines/{r}.py"))) for r in routines_names if getattr(self.context.routines, r, None) is not None]
+                    trg = trg_cls(routines, self.context, **params)
+                    self.context.triggers.start(name, trg)
                 except Exception as e:
                     print(f"Could not load trigger: {e}")
+
 
 
 

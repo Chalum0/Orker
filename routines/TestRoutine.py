@@ -6,8 +6,8 @@ class TestRoutine:
         self.ctx = ctx
 
     def run(self, payload):
-        # print(self.ctx.gateways.TestService.get_random_number())
-        # print(self.ctx.gateways.TestService.get_random_number())
-        # time.sleep(int(random.randint(1, 2) / 10))
-        print(payload)
+        print(payload.content)
         return {"status": "ok", "message": "Hello World!", "payload": payload.get_json()}
+
+    def __str__(self):
+        return "Hello World!"

@@ -21,3 +21,4 @@ demo.py
 testasyncclient.py
 
 SMSTrigger.py
+DiscordTrigger.py
