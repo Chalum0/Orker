@@ -1,13 +1,10 @@
 import sys
 sys.dont_write_bytecode = True
+# Avoid __pycache__
 
 
-from packages import APIServer, Context, TriggerManager, ConfigManager
-from importlib import import_module, invalidate_caches
 from threading import current_thread, main_thread
-from pathlib import Path
-import hashlib
-import json
+from packages import APIServer, ConfigManager
 import time
 
 

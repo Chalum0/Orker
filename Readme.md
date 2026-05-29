@@ -35,9 +35,30 @@ exemple of config.json covering all possible senarios:
             "routine": "TestRoutine"
         }
     ],
-    "gateways": {
-        "TestGateway": {}
-    }
+    "services": [
+        "TestService"
+    ],
+    "gateways": [
+        {
+            "gateway": "TestGateway",
+            "alias": "TestGateway1",
+            "params": {
+                "server": "127.0.0.1"
+            }
+        }
+    ],
+    "triggers": [
+        {
+            "alias": "Discord1",
+            "trigger": "DiscordTrigger",
+            "params": {
+                "token": "xxx"
+            },
+            "routines": [
+                "TestRoutine"
+            ]
+        }
+    ]
 }
 ```
 
