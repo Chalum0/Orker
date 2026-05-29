@@ -11,8 +11,8 @@ services/
 __pycache__
 .python
 
-triggers/bl.json
-triggers/BLTrigger.py
+ExternalTriggers/bl.json
+ExternalTriggers/BLTrigger.py
 routines/BLRoutine.py
 test.py
 
@@ -21,3 +21,4 @@ demo.py
 testasyncclient.py
 
 SMSTrigger.py
+DiscordTrigger.py
