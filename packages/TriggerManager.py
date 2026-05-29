@@ -24,26 +24,44 @@ class TriggerManager:
         else:
             self._reload(name, trigger)
 
-
     def _reload(self, name, new_trigger):
-        self.loop.call_soon_threadsafe(
-            lambda: asyncio.create_task(
-                self._reload_async(name, new_trigger)
-            )
+        return asyncio.run_coroutine_threadsafe(
+            self._reload_async(name, new_trigger),
+            self.loop,
         )
 
     async def _reload_async(self, name, new_trigger):
         old = self.triggers.get(name)
 
         if old:
-            await old.stop()
+            old.stop()
+            await old.wait_stopped()
 
         self.triggers[name] = new_trigger
         new_trigger.start()
 
     def stop(self, name):
-        self.loop.call_soon_threadsafe(
-            lambda: asyncio.create_task(
-                self.triggers[name].stop()
-            )
-        )
+        async def _stop():
+            trigger = self.triggers.get(name)
+            if trigger:
+                trigger.stop()
+                await trigger.wait_stopped()
+
+        return asyncio.run_coroutine_threadsafe(_stop(), self.loop)
+
+    def shutdown(self, timeout=5):
+        async def _shutdown():
+            for trigger in list(self.triggers.values()):
+                trigger.stop()
+
+            for trigger in list(self.triggers.values()):
+                await trigger.wait_stopped()
+
+            self.triggers.clear()
+
+        future = asyncio.run_coroutine_threadsafe(_shutdown(), self.loop)
+        future.result(timeout=timeout)
+
+        self.loop.call_soon_threadsafe(self.loop.stop)
+        self.thread.join(timeout=timeout)
+        self.loop.close()

@@ -24,19 +24,31 @@ class APIServer:
             auth = request.headers.get("Authorization", "")
 
             if not auth.startswith("Bearer "):
-                raise HTTPException(status_code=401)
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Unauthorized"},
+                )
 
             token = auth.removeprefix("Bearer ").strip()
 
             if not secrets.compare_digest(token, self.secret):
-                raise HTTPException(status_code=403)
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "Forbidden"},
+                )
 
             return await call_next(request)
 
     def change_secret(self, secret):
         self.secret = secret
 
-    def make_ws_endpoint(self, route, handler):
+    def make_ws_endpoint(self, route, routines):
+        def handler(payload):
+            results = []
+            for routine in routines:
+                results.append(routine.run(payload))
+            return results
+
         async def run_handler(data):
             payload = Context(variables=data)
 
@@ -126,15 +138,17 @@ class APIServer:
         self.app.add_api_websocket_route(route, endpoint)
         self.app.add_api_websocket_route(f"{route.rstrip('/')}/async", async_endpoint)
 
-    def make_http_endpoint(self, route, method, handler):
-        async def endpoint(request: Request):
-            payload = await request.json() if method != "GET" else {}
-            payload = Context(variables=payload)
+    def make_http_endpoint(self, route, method, routines):
+        def handler(payload):
+            results = []
+            for routine in routines:
+                results.append(routine.run(payload))
+            return results
 
-            if method == "GET":
-                result = handler()
-            else:
-                result = handler(payload)
+        async def endpoint(request: Request):
+            payload_data = await request.json() if method != "GET" else {}
+            payload = Context(variables=payload_data)
+            result = handler(payload)
 
             if inspect.isawaitable(result):
                 result = await result

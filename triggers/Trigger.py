@@ -5,12 +5,8 @@ import inspect
 
 class Trigger:
     def __init__(self, routines, ctx):
-        # routines are of form [(class, (str, str))]
-        self.routines = []
-        self.hashes = {}
-        for routine, h in routines:
-            self.routines.append(routine)
-            self.hashes[h[0]] = h[1]
+        # routines are of form [class]
+        self.routines = routines
         # self.routines = routines
         self.running = False
         self.task = None
@@ -34,18 +30,24 @@ class Trigger:
         self.running = True
         self.task = asyncio.create_task(self._runner())
 
-    async def stop(self):
+    def stop(self):
         self.running = False
-        if self.task:
+
+        if self.task and not self.task.done():
             self.task.cancel()
 
-            try:
-                await self.task
-            except asyncio.CancelledError:
-                pass
+    async def wait_stopped(self):
+        if not self.task:
+            return
+
+        try:
+            await self.task
+        except asyncio.CancelledError:
+            pass
 
     async def restart(self):
-        await self.stop()
+        self.stop()
+        await self.wait_stopped()
         self.start()
 
     def run(self):
