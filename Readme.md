@@ -6,12 +6,11 @@ Current Todos:
 - make better roadmap 
 - implement server secret (done 2026/05/19)
 - implement load balancer for servers
-- implement crons
+- implement crons (done 2026/06/01)
 - add demo and doc
-- handle webhooks for routine completion
+- handle webhooks for routine completion ? 
 - implement node mode and clusterCore
 - have a new logo
-- 
 
 Gateways: in this version, orker allows to create gateways. Gateways are a service that is running in a single instance instead of being instanciated each time. Usefull for services that can stay connected to a server and might be submitted to rate limiting such as chat services.
 Gateways are not restarted with the server's hotreload except if changed.
@@ -66,6 +65,17 @@ exemple of config.json covering all possible scenarios:
             "routines": [
                 "TestRoutine"
             ]
+        }
+    ],
+    "cron_jobs": [
+        {
+            "name": "test",
+            "routine": "TestRoutine",
+            "expr": "* * * * * *",
+            "params": {
+                "msg": "Hello World"
+            },
+            "tz": "Europe/Paris"
         }
     ]
 }
