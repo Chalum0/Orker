@@ -1,6 +1,7 @@
 from importlib import import_module, invalidate_caches
 from packages.TriggerManager import TriggerManager
 from packages.CronJob import CronJob, CronAsyncLoop
+from packages.JsonRoutine import JsonRoutine
 from croniter import CroniterBadCronError
 from packages.Context import Context
 from pathlib import Path
@@ -58,6 +59,40 @@ class ConfigManager:
                 job.tick()
             except Exception as e:
                 print(f"Error while ticking cron job {name}: {e}")
+
+
+
+    def load_gateways(self):
+        config = self._read_json(self.config_path)
+        self.working_config = config
+        self._load_gateways(config)
+    def load_variables(self):
+        config = self._read_json(self.config_path)
+        self.working_config = config
+        self._load_variables(config)
+    def load_routines(self):
+        config = self._read_json(self.config_path)
+        self.working_config = config
+        self._load_routines(config)
+    def load_services(self):
+        config = self._read_json(self.config_path)
+        self.working_config = config
+        self._load_services(config)
+    def load_triggers(self):
+        config = self._read_json(self.config_path)
+        self.working_config = config
+        self._load_routines(config)
+        self._load_triggers(config)
+    def load_endpoints(self, server):
+        config = self._read_json(self.config_path)
+        self.working_config = config
+        self._load_routines(config)
+        self._load_endpoints(server, config)
+    def load_crons(self):
+        config = self._read_json(self.config_path)
+        self.working_config = config
+        self._load_routines(config)
+        self._load_cron_jobs(config)
 
 
     def _read_json(self, src):
@@ -212,6 +247,20 @@ class ConfigManager:
                 except RuntimeError as e:
                     print(f"Unable to load routine {name}: {e}")
                     return None
+
+            else:
+                json_path = f"routines/{name}.json"
+                if Path(json_path).is_file():
+                    try:
+                        routine_json = json.loads(Path(json_path).read_text())
+                        routine = lambda ctx, j=routine_json: JsonRoutine(ctx, j)
+                        return routine
+                    except Exception as e:
+                        print(f"Unable to load routine {name}: {e}")
+                        return None
+                # check if routine.json exists. If so load it with class JsonRoutine and return the
+                # uninstantiated class with a lambda that contains the json routine.
+                # pass
         except Exception as e:
             print(f"Could not load routine {name}: {e}")
             return None

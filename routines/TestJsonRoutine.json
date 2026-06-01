@@ -1,0 +1,74 @@
+[
+    {
+        "inputs": [
+            {
+                "type": "input",
+                "value": {
+                    "maximum": 10,
+                    "minimum": 0
+                }
+            }
+        ],
+        "type": "service",
+        "service": "TestService",
+        "function": "get_random_number",
+        "output": "2"
+    },
+    {
+        "inputs": [
+            {
+                "type": "result",
+                "value": "2",
+                "input_as_json": true,
+                "as": "json_input"
+            },
+            {
+                "type": "input",
+                "input_as_json": true,
+                "as": "json_format",
+                "value": {
+                    "minimum": -100,
+                    "maximum": "$data"
+                }
+            }
+        ],
+        "type": "service",
+        "service": "JsonService",
+        "function": "json_converter",
+        "output": "3"
+    },
+    {
+        "inputs": [
+            {
+                "type": "result",
+                "value": "3"
+            }
+        ],
+        "type": "service",
+        "service": "TestService",
+        "function": "get_two_random_numbers",
+        "output": "4"
+    },
+    {
+        "inputs": [
+            {
+                "type": "result",
+                "value": "1",
+                "input_as_json": true,
+                "as": "json_input"
+            },
+            {
+                "type": "input",
+                "value": {
+                    "content": "$content"
+                },
+                "input_as_json": true,
+                "as": "json_format"
+            }
+        ],
+        "type": "service",
+        "service": "JsonService",
+        "function": "json_converter",
+        "output": "5"
+    }
+]
