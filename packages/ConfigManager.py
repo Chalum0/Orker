@@ -1,5 +1,7 @@
 from importlib import import_module, invalidate_caches
 from packages.TriggerManager import TriggerManager
+from packages.CronJob import CronJob, CronAsyncLoop
+from croniter import CroniterBadCronError
 from packages.Context import Context
 from pathlib import Path
 import hashlib
@@ -15,6 +17,9 @@ class ConfigManager:
         self.hashes = {}
         self.ctx.should_restart = False
 
+        self.cron_async_loop = CronAsyncLoop()
+        self.loop = self.cron_async_loop.loop
+
 
 
     def load_config(self, server):
@@ -27,7 +32,7 @@ class ConfigManager:
         self._load_triggers(config)
         self._load_variables(config)
         self._load_endpoints(server, config)
-
+        self._load_cron_jobs(config)
     def check_hot_reload(self, server):
         config = self._read_json(self.config_path)
         self.working_config = config
@@ -37,8 +42,22 @@ class ConfigManager:
         self._check_service_reload(config)
         self._check_gateway_reload(config)
         self._check_trigger_reload(config)
+        self._check_cron_jobs_reload(config)
         self._load_variables(config)
 
+    def tick_cron_jobs(self):
+        jobs: Context = getattr(self.ctx, "jobs", None)
+
+        if jobs is None:
+            return
+
+        for name, job in jobs.get_json().items():
+            if not hasattr(job, 'tick'):
+                continue
+            try:
+                job.tick()
+            except Exception as e:
+                print(f"Error while ticking cron job {name}: {e}")
 
 
     def _read_json(self, src):
@@ -369,4 +388,102 @@ class ConfigManager:
                 server.make_ws_endpoint(route=route, routines=r)
         except Exception as e:
             print(f"Could not load endpoint {route}: {e}")
+
+    def _get_cron_hash(self, routine, params, expr, tz):
+        if routine is None:
+            return None
+
+        return "|".join([
+            str(self._get_routine_hash(routine)),
+            str(params),
+            str(expr),
+            str(tz),
+        ])
+    def _check_cron_jobs_reload(self, config):
+        if getattr(self.ctx, "jobs", None) is None:
+            return
+
+        config_names = {
+            job.get("name")
+            for job in config.get("cron_jobs", [])
+            if job.get("name")
+        }
+
+        # remove deleted cron jobs
+        for name in list(vars(self.ctx.jobs).keys()):
+            if name not in config_names:
+                old_job = getattr(self.ctx.jobs, name, None)
+
+                if old_job is not None and hasattr(old_job, "stop"):
+                    old_job.stop()
+
+                delattr(self.ctx.jobs, name)
+                self.hashes.pop(f"cron/{name}", None)
+
+        # reload changed / new cron jobs
+        for job in config.get("cron_jobs", []):
+            name = job.get("name")
+            routine = job.get("routine")
+            params = job.get("params", {})
+            expr = job.get("expr")
+            tz = job.get("tz", "Europe/Paris")
+
+            if not name or not routine or not expr:
+                print(f"Invalid cron job: {job}")
+                continue
+
+            hash_key = f"cron/{name}"
+            current_hash = self._get_cron_hash(routine, params, expr, tz)
+
+            if current_hash == self.hashes.get(hash_key):
+                continue
+
+            c = self._load_cron_job(routine, params, expr, tz)
+
+            if c is not None:
+                setattr(self.ctx.jobs, name, c)
+            self.hashes[hash_key] = current_hash
+    def _load_cron_jobs(self, config):
+        self.hashes[self.config_path] = self.file_hash(self.config_path)
+
+        jobs = getattr(self.ctx, "jobs", Context())
+
+        for job in config.get("cron_jobs", []):
+            name = job.get("name")
+            routine = job.get("routine")
+            params = job.get("params", {})
+            expr = job.get("expr")
+            tz = job.get("tz", "Europe/Paris")
+
+            if not name or not routine or not expr:
+                print(f"Invalid cron job: {job}")
+                continue
+
+            c = self._load_cron_job(routine, params, expr, tz)
+
+            if c is not None:
+                setattr(jobs, name, c)
+            self.hashes[f"cron/{name}"] = self._get_cron_hash(
+                routine, params, expr, tz
+            )
+
+        self.ctx.jobs = jobs
+    def _load_cron_job(self, routine, params, expr, tz="Europe/Paris"):
+        r = getattr(self.ctx.routines, routine, None)
+        if r is None:
+            print(f"Cron routine not found: {routine}")
+            return None
+
+        try:
+            return CronJob(expr, r(self.ctx).run, params, tz=tz, loop=self.loop)
+
+        except CroniterBadCronError as e:
+            print(f"Invalid cron expression for routine {routine}: {expr} ({e})")
+            return None
+
+        except Exception as e:
+            print(f"Unable to load cron job for routine {routine}: {e}")
+            return None
+
+
 

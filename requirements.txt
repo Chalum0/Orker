@@ -6,3 +6,5 @@ uvicorn
 fastapi
 websockets
 websocket-client
+croniter
+tzdata

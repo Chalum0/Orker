@@ -46,6 +46,7 @@ class Orker:
                         self.context.should_restart = False
                         print("Reloading")
                         return
+                    self.config_manager.tick_cron_jobs()
                     time.sleep(1)
             except KeyboardInterrupt:
                 self._stop_server()
