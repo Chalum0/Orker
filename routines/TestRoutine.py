@@ -1,5 +1,5 @@
-import time
 import random
+import time
 
 class TestRoutine:
     def __init__(self, ctx):

@@ -1,10 +1,9 @@
 from importlib import import_module, invalidate_caches
 from packages.TriggerManager import TriggerManager
 from packages.CronJob import CronJob, CronAsyncLoop
+from croniter import CroniterBadCronError
 from packages.Context import Context
 from pathlib import Path
-from croniter import CroniterBadCronError
-import threading
 import hashlib
 import json
 import sys
