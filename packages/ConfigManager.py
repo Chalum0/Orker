@@ -21,7 +21,13 @@ class ConfigManager:
         self.cron_async_loop = CronAsyncLoop()
         self.loop = self.cron_async_loop.loop
 
-
+    def get_help(self):
+        if getattr(self.ctx, "services", None) is None:
+            return {}
+        h = {}
+        for key, value in self.ctx.services.get_json().items():
+            h.update(value().help())
+        return h
 
     def load_config(self, server):
         config = self._read_json(self.config_path)

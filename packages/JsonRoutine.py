@@ -47,6 +47,9 @@ class JsonRoutine:
 
                 service = cls()
                 function = getattr(service, f'{func}_json')
+                print(inputs)
+                print(kwargs)
+                print('\n')
                 result = function(**kwargs)
                 results[output_id] = result
 
