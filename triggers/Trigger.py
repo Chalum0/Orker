@@ -12,9 +12,16 @@ class Trigger:
         self.task = None
         self.ctx = ctx
 
+    def set_routines(self, routines):
+        self.routines = tuple(routines)
+
     def trigger(self, payload: dict):
-        for routine in self.routines:
-            payload = Context(payload)
+        payload = Context(payload)
+
+        # snapshot
+        routines = self.routines
+
+        for routine in routines:
             routine(self.ctx).run(payload)
 
     async def _runner(self):

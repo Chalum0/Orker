@@ -1,4 +1,5 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, status, WebSocketException, Request, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from concurrent.futures import ThreadPoolExecutor
 from fastapi.responses import JSONResponse
 from packages.Context import Context
@@ -21,6 +22,9 @@ class APIServer:
 
         @self.app.middleware("http")
         async def check_bearer_token(request: Request, call_next):
+            if request.method == "OPTIONS":
+                return await call_next(request)
+
             auth = request.headers.get("Authorization", "")
 
             if not auth.startswith("Bearer "):
@@ -39,8 +43,36 @@ class APIServer:
 
             return await call_next(request)
 
+        self.app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=False,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
     def change_secret(self, secret):
         self.secret = secret
+
+    def make_api_endpoint(self, route, method, handler):
+        async def endpoint(request: Request):
+            payload_data = await request.json() if method != "GET" else {}
+            payload = Context(variables=payload_data)
+            result = handler(payload)
+
+            if inspect.isawaitable(result):
+                result = await result
+
+            if isinstance(result, dict):
+                return JSONResponse(result)
+            return result
+
+        self.app.add_api_route(
+            route,
+            endpoint,
+            methods=[method],
+            name=f"view_{handler.__name__}_{route.strip('/').replace('/', '_')}"
+        )
 
     def make_ws_endpoint(self, route, routines):
         def handler(payload):
@@ -145,26 +177,7 @@ class APIServer:
                 results.append(routine.run(payload))
             return results
 
-        async def endpoint(request: Request):
-            payload_data = await request.json() if method != "GET" else {}
-            payload = Context(variables=payload_data)
-            result = handler(payload)
-
-            if inspect.isawaitable(result):
-                result = await result
-
-            if isinstance(result, dict):
-                return JSONResponse(result)
-
-            return result
-
-        self.app.add_api_route(
-            route,
-            endpoint,
-            methods=[method],
-            name=f"view_{handler.__name__}_{route.strip('/').replace('/', '_')}",
-        )
-
+        self.make_api_endpoint(route, method, handler)
 
     def verify_ws_token(self, ws: WebSocket):
         auth = ws.headers.get("authorization", "")

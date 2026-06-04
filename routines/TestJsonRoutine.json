@@ -4,38 +4,49 @@
             {
                 "type": "input",
                 "value": {
-                    "maximum": 10,
-                    "minimum": 0
-                }
-            }
-        ],
-        "type": "service",
-        "service": "TestService",
-        "function": "get_random_number",
-        "output": "2"
-    },
-    {
-        "inputs": [
-            {
-                "type": "result",
-                "value": "2",
-                "input_as_json": true,
-                "as": "json_input"
-            },
-            {
-                "type": "input",
-                "input_as_json": true,
-                "as": "json_format",
-                "value": {
-                    "minimum": -100,
-                    "maximum": "$data"
+                    "json_input": {
+                        "content": "This is the new message ahah !"
+                    }
                 }
             }
         ],
         "type": "service",
         "service": "JsonService",
-        "function": "json_converter",
+        "function": "json_producer",
         "output": "3"
+    },
+    {
+        "inputs": [
+            {
+                "type": "input",
+                "value": {
+                    "json_input": {
+                        "maximum": "$content",
+                        "minimum": "0"
+                    }
+                }
+            }
+        ],
+        "type": "service",
+        "service": "JsonService",
+        "function": "json_producer",
+        "output": "7"
+    },
+    {
+        "inputs": [
+            {
+                "type": "input",
+                "value": {
+                    "json_input": {
+                        "content": "$data"
+                    }
+                }
+            }
+        ],
+        "type": "service",
+        "service": "JsonService",
+        "function": "json_producer",
+        "output": "13"
     },
     {
         "inputs": [
@@ -46,8 +57,20 @@
         ],
         "type": "service",
         "service": "TestService",
-        "function": "get_two_random_numbers",
-        "output": "4"
+        "function": "output_message_content",
+        "output": "2"
+    },
+    {
+        "inputs": [
+            {
+                "type": "result",
+                "value": "3"
+            }
+        ],
+        "type": "service",
+        "service": "TestService",
+        "function": "output_message_content",
+        "output": "15"
     },
     {
         "inputs": [
@@ -58,10 +81,8 @@
                 "as": "json_input"
             },
             {
-                "type": "input",
-                "value": {
-                    "content": "$content"
-                },
+                "type": "result",
+                "value": "7",
                 "input_as_json": true,
                 "as": "json_format"
             }
@@ -70,5 +91,49 @@
         "service": "JsonService",
         "function": "json_converter",
         "output": "5"
+    },
+    {
+        "inputs": [
+            {
+                "type": "result",
+                "value": "5"
+            }
+        ],
+        "type": "service",
+        "service": "TestService",
+        "function": "get_random_number",
+        "output": "10"
+    },
+    {
+        "inputs": [
+            {
+                "type": "result",
+                "value": "10",
+                "input_as_json": true,
+                "as": "json_input"
+            },
+            {
+                "type": "result",
+                "value": "13",
+                "input_as_json": true,
+                "as": "json_format"
+            }
+        ],
+        "type": "service",
+        "service": "JsonService",
+        "function": "json_converter",
+        "output": "12"
+    },
+    {
+        "inputs": [
+            {
+                "type": "result",
+                "value": "12"
+            }
+        ],
+        "type": "service",
+        "service": "TestService",
+        "function": "output_message_content",
+        "output": "4"
     }
 ]

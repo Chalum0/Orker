@@ -26,3 +26,9 @@ class Context:
         if variables and isinstance(variables, dict):
             for k, v in variables.items():
                 setattr(self, k, v)
+
+    def has_attributes(self, attributes: list):
+        for a in attributes:
+            if a not in self.get_json():
+                return False
+        return True

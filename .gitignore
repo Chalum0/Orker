@@ -4,7 +4,6 @@ mem.pkl.json
 tests/
 front/
 endpoints/
-services/
 
 .idea
 .venv
@@ -24,4 +23,24 @@ SMSTrigger.py
 DiscordTrigger.py
 test.html
 
-routines/TestJsonRoutine2.json
+
+gateways/*
+!gateways/
+!gateways/Gateway.py
+
+packages/ConfigManager3.py
+
+routines/*
+!routines/
+!routines/TestJsonRoutine.json
+
+services/*
+!services/
+!services/Service.py
+!services/TestService.py
+
+triggers/*
+!triggers/
+!triggers/Trigger.py
+
+doc.md

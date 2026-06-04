@@ -8,6 +8,23 @@ class TriggerManager:
         self.thread = threading.Thread(target=self._run_loop, daemon=True)
         self.thread.start()
 
+    def update_routines(self, name, routines):
+        return asyncio.run_coroutine_threadsafe(
+            self._update_routines_async(name, routines),
+            self.loop,
+        )
+
+    async def _update_routines_async(self, name, routines):
+        trigger = self.triggers.get(name)
+
+        if not trigger:
+            raise KeyError(f"Trigger not found: {name}")
+
+        trigger.set_routines(routines)
+
+    def get_triggers(self):
+        return self.triggers.keys()
+
     def _run_loop(self):
         asyncio.set_event_loop(self.loop)
         self.loop.run_forever()
